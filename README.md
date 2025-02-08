@@ -111,7 +111,7 @@ This project helps automate the process of sending connection requests on Linked
 4. Click **Start Automation** to begin sending connection requests.
 5. Track the progress and see how many connection requests have been sent successfully.
 
-![Usage Demo](https://your-image-link-here.com/demo.jpg)
+
 
 ## Contributing 🤝
 
