@@ -14,6 +14,15 @@ from dotenv import load_dotenv
 load_dotenv()
 LINKEDIN_EMAIL = os.getenv("LINKEDIN_EMAIL")
 LINKEDIN_PASSWORD = os.getenv("LINKEDIN_PASSWORD")
+app = Flask(__name__)
+from flask_cors import CORS
+
+app = Flask(__name__)
+CORS(app, supports_credentials=True, origins=["http://192.168.29.229:5000", "http://127.0.0.1:5000"])
+
+
+
+
 
 # Initialize Flask app
 app = Flask(__name__, static_folder=os.path.join(os.getcwd(), 'frontend', 'build', 'static'), static_url_path='/static')
@@ -30,6 +39,12 @@ def linkedin_login(driver):
         time.sleep(5)
     except Exception as e:
         print(f"Error logging in: {e}")
+def is_browser_active(driver):
+    try:
+        driver.execute_script("return document.readyState")  # This ensures the browser is still responding
+        return True
+    except:
+        return False  # If an error occurs, assume browser session is closed
 
 # Function to search for HR recruiters
 def search_hr_recruiters(driver, search_query):
@@ -50,7 +65,6 @@ def search_hr_recruiters(driver, search_query):
     except Exception as e:
         print(f"Error in search: {e}")
 
-# Function to send connection requests
 def send_connection_requests(search_query, max_pages=3):
     driver = webdriver.Chrome()
     linkedin_login(driver)
@@ -58,11 +72,28 @@ def send_connection_requests(search_query, max_pages=3):
 
     total_requests_sent = 0
 
-    for page in range(1, max_pages + 1):
+    for page in range(1, max_pages + 1):    
+        if not is_browser_active(driver):
+            print("Browser session closed unexpectedly.")
+            break
+
+        try:
+            # Find all connect buttons
+            connect_buttons = WebDriverWait(driver, 10).until(
+                EC.presence_of_all_elements_located((By.XPATH, "//span[text()='Connect']/ancestor::button"))
+            )
+        except:
+            print(f"No connect buttons found on page {page}. Scrolling to find more...")
+        
+        # Scroll multiple times to attempt loading more buttons
+        for _ in range(3):  # Scroll up to 3 times per page
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(2)  # Wait for content to load
+            connect_buttons = driver.find_elements(By.XPATH, "//span[text()='Connect']/ancestor::button")
+            if connect_buttons:
+                break  # Exit loop if new buttons appear
+
         requests_sent = 0
-        connect_buttons = WebDriverWait(driver, 10).until(
-            EC.presence_of_all_elements_located((By.XPATH, "//span[text()='Connect']/ancestor::button"))
-        )
         for button in connect_buttons:
             try:
                 driver.execute_script("arguments[0].click();", button)
@@ -75,29 +106,53 @@ def send_connection_requests(search_query, max_pages=3):
                 requests_sent += 1
             except Exception as e:
                 print(f"Error clicking connect button: {e}")
-        
+
         total_requests_sent += requests_sent
-        time.sleep(2)
+        print(f"Page {page}: Sent {requests_sent} connection requests.")
+
+        # Move to the next page
+        try:
+            next_page_button = WebDriverWait(driver, 5).until(
+                EC.element_to_be_clickable((By.XPATH, "//button[@aria-label='Next']"))
+            )
+            driver.execute_script("arguments[0].click();", next_page_button)
+            time.sleep(2)
+        except Exception:
+            print("No more pages available or 'Next' button not found.")
+            break
 
     driver.quit()
     return total_requests_sent
 
 @app.route('/start', methods=['POST'])
 def start_selenium():
-    data = request.get_json()
-    search_query = data.get("query", "HR recruiters")
-    max_pages = int(data.get("max_pages", 3))
+    try:
+        data = request.get_json()
+        print("📩 Received data:", data)  # Debugging
 
-    def automation_thread():
-        total_requests_sent = send_connection_requests(search_query, max_pages)
-        return total_requests_sent
+        if not data:
+            return jsonify({"error": "Invalid JSON data"}), 400
 
-    thread = threading.Thread(target=automation_thread)
-    thread.start()
-    thread.join()
+        search_query = data.get("query", "HR recruiters")
+        max_pages = int(data.get("max_pages", 3))
 
-    total_requests_sent = automation_thread()  # Get the total requests sent
-    return jsonify({"message": f"Automation started for '{search_query}' with {max_pages} pages! Total requests sent: {total_requests_sent}"})
+        def automation_thread():
+            print(f"🚀 Automation started for '{search_query}' with {max_pages} pages!")
+            total_requests_sent = send_connection_requests(search_query, max_pages)
+            print(f"✅ Automation completed! Total requests sent: {total_requests_sent}")
+
+        # Start the automation in a new thread
+        thread = threading.Thread(target=automation_thread)
+        thread.start()
+
+        return jsonify({
+            "message": f"✅Automation started for '{search_query}' with {max_pages} pages!",
+            "status": "Running"
+        })
+    
+    except Exception as e:
+        print("❌ Backend Error:", str(e))  # Print error to Flask console
+        return jsonify({"error": str(e)}), 500  # Send error response
 
 # Serve React build
 @app.route('/')
@@ -114,10 +169,8 @@ def serve_react_app():
 def catch_all(path):
     build_dir = os.path.join(os.getcwd(), 'frontend', 'build')
     print(f"Serving React catch-all route from: {build_dir}")
-    try:
-        return send_from_directory(build_dir, 'index.html')
-    except FileNotFoundError:
-        return jsonify({"error": "React build not found. Ensure you've run 'npm run build' first."}), 404
+    return send_from_directory(build_dir, 'index.html')
+   
 
 if __name__ == '__main__':
     # Serve React build when Flask runs in production mode

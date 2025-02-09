@@ -1,155 +1,197 @@
 import React, { useState } from "react";
 import axios from "axios";
-import { Spinner } from "react-bootstrap"; // For loading spinner
+import {
+  CircularProgress,
+  TextField,
+  Button,
+  Typography,
+  Box,
+  Paper,
+  Divider,
+  Alert,
+} from "@mui/material";
+import { LinkedIn } from "@mui/icons-material";
 
 const App = () => {
   const [query, setQuery] = useState("");
-  const [maxPages, setMaxPages] = useState(3); // Default to 3 pages
+  const [maxPages, setMaxPages] = useState("");
   const [message, setMessage] = useState("");
-  const [connectionsSent, setConnectionsSent] = useState(0); // Track connections sent
-  const [loading, setLoading] = useState(false); // Track loading state
+  const [messageType, setMessageType] = useState("error"); // Default type
+  const [connectionsSent, setConnectionsSent] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [cancelled, setCancelled] = useState(false);
+  const [automationComplete, setAutomationComplete] = useState(false); // New state to track completion
+
+  const cancelAutomation = async () => {
+    try {
+      setLoading(true);
+      const response = await axios.post("http://127.0.0.1:5000/cancel");
+      setCancelled(true);
+      setMessageType("warning");
+      setMessage("⚠️ Automation cancelled.");
+      setConnectionsSent(response.data.connectionsSent || 0);
+    } catch (error) {
+      console.error("❌ Error:", error);
+      setMessageType("error");
+      setMessage("❌ Failed to cancel automation.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const startAutomation = async () => {
-    // Validation: Check if query and maxPages are filled
-    if (!query.trim()) {
-      setMessage("❌ Please enter a valid search query.");
-      return;
-    }
-
-    if (maxPages <= 0) {
-      setMessage("❌ Please enter a valid number of pages (greater than 0).");
+    if (!query.trim() || !maxPages || maxPages <= 0) {
+      setMessageType("error");
+      setMessage("Please enter a valid search query and number of pages (greater than 0).");
       return;
     }
 
     try {
-      setLoading(true); // Start loading state
-      setMessage("⏳ Starting LinkedIn Automation...");
-      const response = await axios.post("http://127.0.0.1:5000/start", { 
-        query, 
-        max_pages: maxPages 
-      });
+      setLoading(true);
+      setMessage(""); // Clear any previous messages
+      setConnectionsSent(0); // Reset connections sent counter
+      setAutomationComplete(false); // Reset automation complete flag
 
-      setMessage(response.data.message); // Assuming your backend sends a message
-      setConnectionsSent(response.data.connectionsSent); // Assuming the backend returns connections sent
+      const response = await axios.post("http://127.0.0.1:5000/start", { query, max_pages: Number(maxPages) });
+
+      if (!response.data || !response.data.message) {
+        throw new Error("Invalid response from the server.");
+      }
+
+      setMessageType("success");
+      setMessage(response.data.message);
+      setConnectionsSent(response.data.connectionsSent || 0);
+      setAutomationComplete(true); // Set the automation as complete
     } catch (error) {
-      console.error("❌ Error:", error);
-      setMessage("❌ Failed to start automation.");
+      setMessageType("error");
+      setMessage("Failed to start automation.");
     } finally {
-      setLoading(false); // Stop loading state
+      setLoading(false);
     }
   };
 
   return (
-    <div className="d-flex justify-content-center align-items-center min-vh-100 bg-light">
-      <div className="container p-5 rounded-lg shadow-lg" style={containerStyle}>
-        
-        {/* LinkedIn Logo with Font Awesome - Increased Size */}
-        <div className="d-flex justify-content-center align-items-center mb-4">
-          <i 
-            className="fab fa-linkedin" 
-            style={{ fontSize: "70px", color: "#0077B5", marginRight: "10px" }} // Further increased size
-          ></i>
-          <h2 className="mb-0" style={headerStyle}>LinkedIn Connection Automation</h2>
-        </div>
+    <Box
+      display="flex"
+      justifyContent="center"
+      alignItems="center"
+      minHeight="100vh"
+      bgcolor="#f4f6f8"
+      px={2}
+    >
+      <Paper
+        elevation={4}
+        sx={{
+          p: 3,
+          borderRadius: 3,
+          width: "100%",
+          maxWidth: 500,
+          textAlign: "center",
+        }}
+      >
+        {/* Header */}
+        <Box display="flex" alignItems="center" justifyContent="center" mb={3}>
+          <LinkedIn sx={{ fontSize: 95, color: "#0077B5" }} />
+          <Typography variant="h4" fontWeight="bold" color="#333" ml={2} sx={{ textAlign: "center", width: "100%" }}>
+            LinkedIn Networking Automation Tool
+          </Typography>
+        </Box>
 
-        {/* Search Query */}
-        <div className="form-group">
-          <label htmlFor="query" style={labelStyle}>Search Query</label>
-          <input
-            type="text"
-            className="form-control my-3"
-            id="query"
-            placeholder="Enter search query (e.g., HR recruiters)"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            style={inputStyle}
-          />
-        </div>
+        <Divider sx={{ mb: 3 }} />
 
-        {/* Max Pages */}
-        <div className="form-group">
-          <label htmlFor="maxPages" style={labelStyle}>Number of Pages</label>
-          <input
-            type="number"
-            className="form-control my-3"
-            id="maxPages"
-            placeholder="Enter number of pages (e.g., 3)"
-            value={maxPages}
-            min="1"
-            onChange={(e) => setMaxPages(Number(e.target.value))}
-            style={inputStyle}
-          />
-        </div>
+        {/* Explanation Text */}
+        <Typography variant="body2" color="textSecondary" paragraph>
+          This tool automates LinkedIn connection requests. Search users by
+          keywords and specify the number of pages to process, making it a fast
+          way to expand your network.
+        </Typography>
+
+        {/* Search Query Input */}
+        <TextField
+          label="Search Query"
+          variant="outlined"
+          fullWidth
+          margin="normal"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Enter search query (e.g., HR recruiters)"
+          sx={{ fontSize: "14px" }}
+        />
+
+        {/* Number of Pages Input */}
+        <TextField
+          label="Number of Pages"
+          variant="outlined"
+          fullWidth
+          margin="normal"
+          type="number"
+          value={maxPages}
+          onChange={(e) => setMaxPages(e.target.value)}
+          inputProps={{ min: 1 }}
+          sx={{ fontSize: "14px" }}
+        />
+
+        {/* Error or Success Message */}
+        {message && (
+          <Alert severity={messageType} sx={{ mt: 2 }}>
+            {message}
+          </Alert>
+        )}
 
         {/* Start Automation Button */}
-        <button 
-          className="btn btn-primary w-100" 
-          onClick={startAutomation} 
-          style={buttonStyle}
-          disabled={loading} // Disable button when loading
+        <Button
+          variant="contained"
+          color="primary"
+          fullWidth
+          sx={{
+            py: 1,
+            mt: 2,
+            fontWeight: "bold",
+            fontSize: "16px",
+            height: 48,
+          }}
+          onClick={startAutomation}
+          disabled={loading}
         >
-          {loading ? <Spinner animation="border" size="sm" /> : "Start Automation"}
-        </button>
+          {loading ? <CircularProgress size={24} color="secondary" /> : "Start Automation"}
+        </Button>
 
-        {/* Message Feedback */}
-        {message && <p className="mt-3 text-center" style={messageStyle}>{message}</p>}
+        {/* Cancel Automation Button */}
+        <Button
+          variant="outlined"
+          color="error"
+          fullWidth
+          sx={{
+            py: 1,
+            mt: 2,
+            fontWeight: "bold",
+            fontSize: "16px",
+            height: 48,
+          }}
+          onClick={cancelAutomation}
+          disabled={loading || cancelled}
+        >
+          Cancel Automation
+        </Button>
 
-        {/* Connections Sent */}
-        {connectionsSent > 0 && (
-          <p className="mt-3 text-center" style={connectionsSentStyle}>
-            ✅ {connectionsSent} connections sent!
-          </p>
+        {/* Loading Spinner */}
+        {loading && (
+          <Box display="flex" justifyContent="center" mt={3}>
+            <CircularProgress size={40} />
+          </Box>
         )}
-      </div>
-    </div>
+
+        {/* Success Message for Connections Sent */}
+        {automationComplete && connectionsSent > 0 && (
+          <Alert severity="success" sx={{ mt: 3 }}>
+            ✅ {connectionsSent} connection requests sent successfully!
+          </Alert>
+        )}
+
+        
+      </Paper>
+    </Box>
   );
-};
-
-// Professional Color Scheme Styles
-const containerStyle = {
-  maxWidth: "500px",
-  backgroundColor: "#ffffff", // White background for a clean look
-  boxShadow: "0px 4px 10px rgba(0, 0, 0, 0.1)", // Soft shadow to lift the container
-};
-
-const headerStyle = {
-  color: "#2c3e50", // Dark gray for header text to convey professionalism
-  fontWeight: "700", // Bold for emphasis
-  fontSize: "31px", // Slightly larger for header
-};
-
-const labelStyle = {
-  color: "#34495e", // Soft dark gray for labels
-  fontWeight: "600", // Bold to make labels stand out
-  fontSize: "16px", // Slightly smaller size for labels
-};
-
-const inputStyle = {
-  padding: "12px",
-  fontSize: "16px",
-  borderRadius: "8px",
-  border: "1px solid #bdc3c7", // Subtle border
-  transition: "border-color 0.3s ease",
-};
-
-const buttonStyle = {
-  fontSize: "18px", 
-  padding: "14px", 
-  borderRadius: "8px", 
-  transition: "background-color 0.3s ease",
-  backgroundColor: "#2980b9", // Professional blue
-  borderColor: "#2980b9", // Blue border to match the button color
-  fontWeight: "600",
-};
-
-const messageStyle = {
-  fontSize: "16px", 
-  color: "#e74c3c", // Red color for error messages
-};
-
-const connectionsSentStyle = {
-  fontSize: "16px", 
-  color: "#27ae60", // Green for success message
 };
 
 export default App;
